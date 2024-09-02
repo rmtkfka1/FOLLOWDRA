@@ -28,7 +28,12 @@
     <ClInclude Include="GameFrameWork.h">
       <Filter>Core</Filter>
     </ClInclude>
-    <ClInclude Include="Timer.h" />
+    <ClInclude Include="Scene.h">
+      <Filter>Core</Filter>
+    </ClInclude>
+    <ClInclude Include="Timer.h">
+      <Filter>Core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="followDragon.cpp">
@@ -40,7 +45,12 @@
     <ClCompile Include="GameFrameWork.cpp">
       <Filter>Core</Filter>
     </ClCompile>
-    <ClCompile Include="Timer.cpp" />
+    <ClCompile Include="Scene.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
+    <ClCompile Include="Timer.cpp">
+      <Filter>Core</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="followDragon.rc">
@@ -54,5 +64,8 @@
     <Image Include="followDragon.ico">
       <Filter>리소스 파일</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders.hlsl" />
   </ItemGroup>
 </Project>

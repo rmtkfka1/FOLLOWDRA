@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Timer.h"
-
+#include "Scene.h"
 
 class GameFrameWork
 {
@@ -44,7 +44,7 @@ private:
 	ID3D12PipelineState *m_pd3dPipelineState;
 	//그래픽스 파이프라인 상태 객체에 대한 인터페이스 포인터이다. 
 	ID3D12Fence *m_pd3dFence;
-	UINT64 m_nFenceValue;
+	UINT64 m_nFenceValues[m_nSwapChainBuffers];
 	HANDLE m_hFenceEvent;
 	//펜스 인터페이스 포인터, 펜스의 값, 이벤트 핸들이다. 
 	D3D12_VIEWPORT m_d3dViewport;
@@ -78,6 +78,10 @@ public:
 	LRESULT CALLBACK OnProcessingWindowMessage(HWND hWnd, UINT nMessageID, WPARAM wParam,
 		LPARAM lParam);
 	//윈도우의 메시지(키보드, 마우스 입력)를 처리하는 함수이다.
+
+public:
+	Scene* m_pScene;
+	void MoveToNextFrame();
 
 private:
 	Timer timer;

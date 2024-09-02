@@ -19,7 +19,10 @@ GameFrameWork::GameFrameWork()
 	m_nSwapChainBufferIndex = 0;
 	m_hFenceEvent = NULL;
 	m_pd3dFence = NULL;
-	m_nFenceValue = 0;
+	for (int i = 0; i < m_nSwapChainBuffers; i++) m_nFenceValues[i] = 0;
+	m_pScene = NULL;
+	m_d3dViewport = { 0, 0, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT, 0.0f, 1.0f };
+	m_d3dScissorRect = { 0, 0, FRAME_BUFFER_WIDTH, FRAME_BUFFER_HEIGHT };
 	m_nWndClientWidth = FRAME_BUFFER_WIDTH;
 	m_nWndClientHeight = FRAME_BUFFER_HEIGHT;
 
@@ -160,7 +163,12 @@ void GameFrameWork::CreateDirect3DDevice()
 	//다중 샘플의 품질 수준이 1보다 크면 다중 샘플링을 활성화한다. 
 	hResult = m_pd3dDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, __uuidof(ID3D12Fence), 
 	(void**)&m_pd3dFence);
-	m_nFenceValue = 0;
+	
+	for (int i = 0; i < m_nSwapChainBuffers; ++i)
+	{
+		m_nFenceValues[i] = 0;
+	}
+
 	//펜스를 생성하고 펜스 값을 0으로 설정한다. 
 	m_hFenceEvent = ::CreateEvent(NULL, FALSE, FALSE, NULL);
 	/*펜스와 동기화를 위한 이벤트 객체를 생성한다(이벤트 객체의 초기값을 FALSE이다). 이벤트가 실행되면(Signal) 이
@@ -271,9 +279,15 @@ void GameFrameWork::CreateDepthStencilView()
 
 void GameFrameWork::BuildObjects()
 {
+	m_pScene = new Scene();
+	if (m_pScene) m_pScene->BuildObjects(m_pd3dDevice);
+	timer.Reset();
+
 }
 void GameFrameWork::ReleaseObjects()
 {
+	if (m_pScene) m_pScene->ReleaseObjects();
+	if (m_pScene) delete m_pScene;
 }
 void GameFrameWork::OnProcessingMouseMessage(HWND hWnd, UINT nMessageID, WPARAM wParam,
 	LPARAM lParam)
@@ -342,25 +356,33 @@ LRESULT CALLBACK GameFrameWork::OnProcessingWindowMessage(HWND hWnd, UINT nMessa
 	}
 	return(0);
 }
+void GameFrameWork::MoveToNextFrame()
+{
+	m_nSwapChainBufferIndex = m_pdxgiSwapChain->GetCurrentBackBufferIndex();
+	UINT64 nFenceValue = ++m_nFenceValues[m_nSwapChainBufferIndex];
+	HRESULT hResult = m_pd3dCommandQueue->Signal(m_pd3dFence, nFenceValue);
+	if (m_pd3dFence->GetCompletedValue() < nFenceValue)
+	{
+		hResult = m_pd3dFence->SetEventOnCompletion(nFenceValue, m_hFenceEvent);
+		::WaitForSingleObject(m_hFenceEvent, INFINITE);
+	}
+}
 void GameFrameWork::ProcessInput()
 {
 }
 
 void GameFrameWork::AnimateObjects()
 {
+	if (m_pScene) m_pScene->AnimateObjects(timer.GetTimeElapsed());
 }
 
 void GameFrameWork::WaitForGpuComplete()
 {
-	m_nFenceValue++;
-	//CPU 펜스의 값을 증가한다. 
-	const UINT64 nFence = m_nFenceValue;
-	HRESULT hResult = m_pd3dCommandQueue->Signal(m_pd3dFence, nFence);
-	//GPU가 펜스의 값을 설정하는 명령을 명령 큐에 추가한다. 
-	if (m_pd3dFence->GetCompletedValue() < nFence)
+	UINT64 nFenceValue = ++m_nFenceValues[m_nSwapChainBufferIndex];
+	HRESULT hResult = m_pd3dCommandQueue->Signal(m_pd3dFence, nFenceValue);
+	if (m_pd3dFence->GetCompletedValue() < nFenceValue)
 	{
-		//펜스의 현재 값이 설정한 값보다 작으면 펜스의 현재 값이 설정한 값이 될 때까지 기다린다. 
-		hResult = m_pd3dFence->SetEventOnCompletion(nFence, m_hFenceEvent);
+		hResult = m_pd3dFence->SetEventOnCompletion(nFenceValue, m_hFenceEvent);
 		::WaitForSingleObject(m_hFenceEvent, INFINITE);
 	}
 }
@@ -368,57 +390,48 @@ void GameFrameWork::WaitForGpuComplete()
 void GameFrameWork::FrameAdvance()
 {
 	timer.Tick(0.0f);
-
 	ProcessInput();
 	AnimateObjects();
 	HRESULT hResult = m_pd3dCommandAllocator->Reset();
 	hResult = m_pd3dCommandList->Reset(m_pd3dCommandAllocator, NULL);
-	//명령 할당자와 명령 리스트를 리셋한다. 
+	m_pd3dCommandList->RSSetViewports(1, &m_d3dViewport);
+	m_pd3dCommandList->RSSetScissorRects(1, &m_d3dScissorRect);
 	D3D12_RESOURCE_BARRIER d3dResourceBarrier;
 	::ZeroMemory(&d3dResourceBarrier, sizeof(D3D12_RESOURCE_BARRIER));
 	d3dResourceBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
 	d3dResourceBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-	d3dResourceBarrier.Transition.pResource =m_ppd3dRenderTargetBuffers[m_nSwapChainBufferIndex];
+	d3dResourceBarrier.Transition.pResource =
+		m_ppd3dRenderTargetBuffers[m_nSwapChainBufferIndex];
 	d3dResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_PRESENT;
 	d3dResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	d3dResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	m_pd3dCommandList->ResourceBarrier(1, &d3dResourceBarrier);
-
-	m_pd3dCommandList->RSSetViewports(1, &m_d3dViewport);
-	m_pd3dCommandList->RSSetScissorRects(1, &m_d3dScissorRect);
-
-	//뷰포트와 씨저 사각형을 설정한다. 
-	D3D12_CPU_DESCRIPTOR_HANDLE d3dRtvCPUDescriptorHandle = m_pd3dRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-	d3dRtvCPUDescriptorHandle.ptr += (m_nSwapChainBufferIndex *m_nRtvDescriptorIncrementSize);
-	//현재의 렌더 타겟에 해당하는 서술자의 CPU 주소(핸들)를 계산한다. 
+	D3D12_CPU_DESCRIPTOR_HANDLE d3dRtvCPUDescriptorHandle =
+		m_pd3dRtvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	d3dRtvCPUDescriptorHandle.ptr += (m_nSwapChainBufferIndex *
+		m_nRtvDescriptorIncrementSize);
+	D3D12_CPU_DESCRIPTOR_HANDLE d3dDsvCPUDescriptorHandle =
+		m_pd3dDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
+	m_pd3dCommandList->OMSetRenderTargets(1, &d3dRtvCPUDescriptorHandle, FALSE,
+		&d3dDsvCPUDescriptorHandle);
 	float pfClearColor[4] = { 0.0f, 0.125f, 0.3f, 1.0f };
-	m_pd3dCommandList->ClearRenderTargetView(d3dRtvCPUDescriptorHandle,pfClearColor/*Colors::Azure*/, 0, NULL);
-	//원하는 색상으로 렌더 타겟(뷰)을 지운다. 
-	D3D12_CPU_DESCRIPTOR_HANDLE d3dDsvCPUDescriptorHandle = m_pd3dDsvDescriptorHeap->GetCPUDescriptorHandleForHeapStart();
-	//깊이-스텐실 서술자의 CPU 주소를 계산한다. 
-	m_pd3dCommandList->ClearDepthStencilView(d3dDsvCPUDescriptorHandle, D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, NULL);
-	//원하는 값으로 깊이-스텐실(뷰)을 지운다.
-	m_pd3dCommandList->OMSetRenderTargets(1, &d3dRtvCPUDescriptorHandle, TRUE, &d3dDsvCPUDescriptorHandle);
-	//렌더 타겟 뷰(서술자)와 깊이-스텐실 뷰(서술자)를 출력-병합 단계(OM)에 연결한다. 
-	//렌더링 코드는 여기에 추가될 것이다. d
-	 
+	m_pd3dCommandList->ClearRenderTargetView(d3dRtvCPUDescriptorHandle, pfClearColor, 0,
+		NULL);
+	m_pd3dCommandList->ClearDepthStencilView(d3dDsvCPUDescriptorHandle,
+		D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, NULL);
+	if (m_pScene) m_pScene->Render(m_pd3dCommandList);
 	d3dResourceBarrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	d3dResourceBarrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
 	d3dResourceBarrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
 	m_pd3dCommandList->ResourceBarrier(1, &d3dResourceBarrier);
 	hResult = m_pd3dCommandList->Close();
-
-	//명령 리스트를 닫힌 상태로 만든다. 
-	ID3D12CommandList *ppd3dCommandLists[] = { m_pd3dCommandList };
-	m_pd3dCommandQueue->ExecuteCommandLists(1, ppd3dCommandLists);
-	//명령 리스트를 명령 큐에 추가하여 실행한다. 
+	ID3D12CommandList* ppd3dCommandLists[] = { m_pd3dCommandList };
+	m_pd3dCommandQueue->ExecuteCommandLists(_countof(ppd3dCommandLists),
+		ppd3dCommandLists);
 	WaitForGpuComplete();
-
 	m_pdxgiSwapChain->Present(0, 0);
-
+	MoveToNextFrame();
 	timer.GetFrameRate(m_pszFrameRate + 12, 37);
 	::SetWindowText(m_hWnd, m_pszFrameRate);
-
-	m_nSwapChainBufferIndex = m_pdxgiSwapChain->GetCurrentBackBufferIndex();
 
 }

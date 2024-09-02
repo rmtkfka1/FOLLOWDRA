@@ -36,3 +36,5 @@ using Microsoft::WRL::ComPtr;
 
 #define FRAME_BUFFER_WIDTH 800
 #define FRAME_BUFFER_HEIGHT 600
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")

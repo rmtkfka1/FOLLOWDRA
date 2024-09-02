@@ -28,6 +28,7 @@
     <ClInclude Include="GameFrameWork.h">
       <Filter>Core</Filter>
     </ClInclude>
+    <ClInclude Include="Timer.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="followDragon.cpp">
@@ -39,6 +40,7 @@
     <ClCompile Include="GameFrameWork.cpp">
       <Filter>Core</Filter>
     </ClCompile>
+    <ClCompile Include="Timer.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="followDragon.rc">
